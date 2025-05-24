@@ -8,19 +8,15 @@ const fs = require('fs');
 const app = express();
 const port = 4000;
 
-// إعداد الاتصال بقاعدة البيانات
 const uri = "mongodb+srv://admin00774411:ali00774411@cluster0.tgklmqx.mongodb.net/mydatabase?retryWrites=true&w=majority";
 const client = new MongoClient(uri);
 
-// إعداد CORS و body parser
 app.use(cors());
 app.use(express.json());
 
-// مجلد لحفظ الصور
 const uploadFolder = path.join(__dirname, 'uploads');
 if (!fs.existsSync(uploadFolder)) fs.mkdirSync(uploadFolder);
 
-// إعداد multer
 const storage = multer.diskStorage({
   destination: function (req, file, cb) {
     cb(null, 'uploads/');
@@ -30,9 +26,17 @@ const storage = multer.diskStorage({
     cb(null, uniqueName);
   }
 });
-const upload = multer({ storage: storage });
 
-// عرض الصور مباشرة
+const upload = multer({
+  storage: storage,
+  fileFilter: function (req, file, cb) {
+    if (!file.mimetype.startsWith('image/')) {
+      return cb(new Error('الملف المرفوع يجب أن يكون صورة'));
+    }
+    cb(null, true);
+  }
+});
+
 app.use('/uploads', express.static('uploads'));
 
 async function run() {
@@ -43,7 +47,6 @@ async function run() {
     const db = client.db('mydatabase');
     const postsCollection = db.collection('posts');
 
-    // مسار رفع منشور مع صورة (مطابق للواجهة)
     app.post('/api/post', upload.single('image'), async (req, res) => {
       const content = req.body.content;
       const image = req.file ? req.file.filename : null;
@@ -63,13 +66,11 @@ async function run() {
       res.status(201).json({ message: 'تم إضافة المنشور', postId: result.insertedId });
     });
 
-    // جلب المنشورات
     app.get('/api/posts', async (req, res) => {
       const posts = await postsCollection.find().sort({ createdAt: -1 }).toArray();
       res.status(200).json(posts);
     });
 
-    // الاستماع على جميع الشبكة
     app.listen(port, '0.0.0.0', () => {
       console.log(`Server running on http://0.0.0.0:${port}`);
     });
