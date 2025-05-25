@@ -8,7 +8,10 @@ const fs = require('fs');
 const app = express();
 const port = 4000;
 
-const uri = "mongodb+srv://admin00774411:ali00774411@cluster0.tgklmqx.mongodb.net/mydatabase?retryWrites=true&w=majority";
+// يمكن استخدام dotenv لقراءة MONGODB_URI من ملف .env
+require('dotenv').config();
+const uri = process.env.MONGODB_URI;
+
 const client = new MongoClient(uri);
 
 app.use(cors());
