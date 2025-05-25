@@ -1,0 +1,22 @@
+{
+  "name": "post-with-image",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/aliali007753/Alshora.git"
+  },
+  "author": "ali",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/aliali007753/Alshora/issues"
+  },
+  "homepage": "https://github.com/aliali007753/Alshora#readme",
+  "dependencies": {
+    "express": "^5.1.0"
+  }
+}
