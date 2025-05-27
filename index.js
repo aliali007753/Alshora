@@ -10,7 +10,8 @@ require('dotenv').config();  // تحميل متغيرات البيئة في ال
 const app = express();
 const port = 4000;
 
-const uri = process.env.MONGODB_URI;
+MONGODB_URI=mongodb+srv://admin00774411:ali00774411@cluster0.tgklmqx.mongodb.net/mydatabase?retryWrites=true&w=majority
+
 
 // تحقق إن متغير البيئة موجود
 if (!uri) {
