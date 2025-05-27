@@ -5,18 +5,18 @@ const { MongoClient } = require('mongodb');
 const path = require('path');
 const fs = require('fs');
 
-require('dotenv').config();  // تحميل متغيرات البيئة في البداية
+require('dotenv').config();  // تحميل متغيرات البيئة
 
 const app = express();
 const port = 4000;
 
-MONGODB_URI=mongodb+srv://admin00774411:ali00774411@cluster0.tgklmqx.mongodb.net/mydatabase?retryWrites=true&w=majority
+// رابط الاتصال مع كلمة السر مضافة
+const uri = "mongodb+srv://admin00774411:ali00774411@cluster0.tgklmqx.mongodb.net/mydatabase?retryWrites=true&w=majority&appName=Cluster0";
 
-
-// تحقق إن متغير البيئة موجود
+// تحقق من وجود URI
 if (!uri) {
-  console.error('خطأ: متغير البيئة MONGODB_URI غير معرف في ملف .env');
-  process.exit(1);  // إيقاف البرنامج إذا لم يوجد URI
+  console.error('خطأ: متغير البيئة MONGODB_URI غير معرف');
+  process.exit(1);
 }
 
 const client = new MongoClient(uri);
