@@ -1,16 +1,23 @@
 const express = require('express');
 const cors = require('cors');
 const multer = require('multer');
-const { MongoClient, ObjectId } = require('mongodb');
+const { MongoClient } = require('mongodb');
 const path = require('path');
 const fs = require('fs');
 
-require('dotenv').config();
+require('dotenv').config();  // تحميل متغيرات البيئة في البداية
 
 const app = express();
-const port = process.env.PORT || 4000;
+const port = 4000;
 
 const uri = process.env.MONGODB_URI;
+
+// تحقق إن متغير البيئة موجود
+if (!uri) {
+  console.error('خطأ: متغير البيئة MONGODB_URI غير معرف في ملف .env');
+  process.exit(1);  // إيقاف البرنامج إذا لم يوجد URI
+}
+
 const client = new MongoClient(uri);
 
 app.use(cors());
@@ -33,7 +40,7 @@ const upload = multer({
   storage: storage,
   fileFilter: function (req, file, cb) {
     if (!file.mimetype.startsWith('image/')) {
-      return cb(new Error('Uploaded file must be an image'));
+      return cb(new Error('الملف المرفوع يجب أن يكون صورة'));
     }
     cb(null, true);
   }
@@ -48,95 +55,37 @@ async function run() {
 
     const db = client.db('mydatabase');
     const postsCollection = db.collection('posts');
-    const playersCollection = db.collection('players');
 
-    // إضافة منشور
     app.post('/api/post', upload.single('image'), async (req, res) => {
       const content = req.body.content;
       const image = req.file ? req.file.filename : null;
 
       if (!content || content.trim() === '') {
-        return res.status(400).json({ message: 'Post content is required' });
+        return res.status(400).json({ message: 'نص المنشور مطلوب' });
       }
 
       const newPost = {
-        userName: req.body.userName || 'User',
+        userName: req.body.userName || 'مستخدم',
         content,
         imageUrl: image ? `/uploads/${image}` : null,
         createdAt: new Date()
       };
 
       const result = await postsCollection.insertOne(newPost);
-      res.status(201).json({ message: 'Post added successfully', postId: result.insertedId });
+      res.status(201).json({ message: 'تم إضافة المنشور', postId: result.insertedId });
     });
 
-    // جلب المنشورات
     app.get('/api/posts', async (req, res) => {
       const posts = await postsCollection.find().sort({ createdAt: -1 }).toArray();
       res.status(200).json(posts);
     });
 
-    // إضافة لاعب
-    app.post('/api/players/add', upload.single('image'), async (req, res) => {
-      const { name, biography } = req.body;
-      const image = req.file ? req.file.filename : null;
-
-      if (!name || !biography) {
-        return res.status(400).json({ message: 'Name and biography are required' });
-      }
-
-      const newPlayer = {
-        name,
-        biography,
-        imageUrl: image ? `/uploads/${image}` : null,
-        visits: 0,
-        createdAt: new Date()
-      };
-
-      try {
-        const result = await playersCollection.insertOne(newPlayer);
-        res.status(201).json({ message: 'Player added successfully', playerId: result.insertedId });
-      } catch (err) {
-        res.status(500).json({ message: 'Database error' });
-      }
-    });
-
-    // جلب اللاعبين
-    app.get('/api/players', async (req, res) => {
-      try {
-        const players = await playersCollection.find().sort({ createdAt: -1 }).toArray();
-        res.status(200).json(players);
-      } catch (err) {
-        res.status(500).json({ message: 'Database error' });
-      }
-    });
-
-    // زيادة عدد الزيارات للاعب
-    app.post('/api/players/:id/visit', async (req, res) => {
-      const playerId = req.params.id;
-
-      try {
-        const result = await playersCollection.updateOne(
-          { _id: new ObjectId(playerId) },
-          { $inc: { visits: 1 } }
-        );
-
-        if (result.modifiedCount === 1) {
-          res.json({ message: 'Visit count incremented' });
-        } else {
-          res.status(404).json({ message: 'Player not found' });
-        }
-      } catch (err) {
-        res.status(400).json({ message: 'Invalid player ID' });
-      }
-    });
-
     app.listen(port, '0.0.0.0', () => {
-      console.log(`Server running on port ${port}`);
+      console.log(`Server running on http://0.0.0.0:${port}`);
     });
 
   } catch (err) {
-    console.error(err);
+    console.error('Error in server:', err);
   }
 }
 
