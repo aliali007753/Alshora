@@ -1,93 +1,133 @@
 const express = require('express');
+const mongoose = require('mongoose');
 const cors = require('cors');
-const multer = require('multer');
-const { MongoClient } = require('mongodb');
-const path = require('path');
-const fs = require('fs');
-
-require('dotenv').config();  // تحميل متغيرات البيئة
+const bcrypt = require('bcrypt');
+const jwt = require('jsonwebtoken');
 
 const app = express();
-const port = 4000;
-
-// رابط الاتصال مع كلمة السر مضافة
-const uri = "mongodb+srv://admin00774411:ali00774411@cluster0.tgklmqx.mongodb.net/mydatabase?retryWrites=true&w=majority&appName=Cluster0";
-
-// تحقق من وجود URI
-if (!uri) {
-  console.error('خطأ: متغير البيئة MONGODB_URI غير معرف');
-  process.exit(1);
-}
-
-const client = new MongoClient(uri);
-
-app.use(cors());
 app.use(express.json());
+app.use(cors());
 
-const uploadFolder = path.join(__dirname, 'uploads');
-if (!fs.existsSync(uploadFolder)) fs.mkdirSync(uploadFolder);
+const PORT = process.env.PORT || 5000;
+const MONGO_URI = process.env.MONGO_URI || 'mongodb://localhost:27017/posts_db';
+const JWT_SECRET = process.env.JWT_SECRET || 'your_jwt_secret_key_here';
 
-const storage = multer.diskStorage({
-  destination: function (req, file, cb) {
-    cb(null, uploadFolder);
-  },
-  filename: function (req, file, cb) {
-    const uniqueName = Date.now() + '-' + file.originalname;
-    cb(null, uniqueName);
-  }
+// ----- موديل المنشور -----
+const postSchema = new mongoose.Schema({
+  name: { type: String, required: true },
+  content: { type: String, required: true },
+  imageUrl: { type: String, default: '' },
+  createdAt: { type: Date, default: Date.now }
 });
 
-const upload = multer({
-  storage: storage,
-  fileFilter: function (req, file, cb) {
-    if (!file.mimetype.startsWith('image/')) {
-      return cb(new Error('الملف المرفوع يجب أن يكون صورة'));
-    }
-    cb(null, true);
-  }
+const Post = mongoose.model('Post', postSchema);
+
+// ----- موديل المستخدم (المدير) -----
+const userSchema = new mongoose.Schema({
+  username: { type: String, unique: true, required: true },
+  passwordHash: { type: String, required: true },
+  role: { type: String, enum: ['admin', 'user'], default: 'user' }
 });
 
-app.use('/uploads', express.static(uploadFolder));
+const User = mongoose.model('User', userSchema);
 
-async function run() {
+// ----- Middleware للتحقق من صلاحية المدير -----
+const authMiddleware = (req, res, next) => {
+  const authHeader = req.headers.authorization;
+  if(!authHeader || !authHeader.startsWith('Bearer ')){
+    return res.status(401).json({ message: 'Unauthorized' });
+  }
+  const token = authHeader.split(' ')[1];
   try {
-    await client.connect();
-    console.log('Connected to MongoDB');
-
-    const db = client.db('mydatabase');
-    const postsCollection = db.collection('posts');
-
-    app.post('/api/post', upload.single('image'), async (req, res) => {
-      const content = req.body.content;
-      const image = req.file ? req.file.filename : null;
-
-      if (!content || content.trim() === '') {
-        return res.status(400).json({ message: 'نص المنشور مطلوب' });
-      }
-
-      const newPost = {
-        userName: req.body.userName || 'مستخدم',
-        content,
-        imageUrl: image ? `/uploads/${image}` : null,
-        createdAt: new Date()
-      };
-
-      const result = await postsCollection.insertOne(newPost);
-      res.status(201).json({ message: 'تم إضافة المنشور', postId: result.insertedId });
-    });
-
-    app.get('/api/posts', async (req, res) => {
-      const posts = await postsCollection.find().sort({ createdAt: -1 }).toArray();
-      res.status(200).json(posts);
-    });
-
-    app.listen(port, '0.0.0.0', () => {
-      console.log(`Server running on http://0.0.0.0:${port}`);
-    });
-
-  } catch (err) {
-    console.error('Error in server:', err);
+    const decoded = jwt.verify(token, JWT_SECRET);
+    req.user = decoded;
+    if(decoded.role !== 'admin'){
+      return res.status(403).json({ message: 'Forbidden: Requires admin role' });
+    }
+    next();
+  } catch(err) {
+    return res.status(401).json({ message: 'Invalid token' });
   }
-}
+};
 
-run().catch(console.dir);
+// --- روت لتسجيل دخول المدير (ببساطة) ---
+app.post('/api/login', async (req, res) => {
+  const { username, password } = req.body;
+  if(!username || !password){
+    return res.status(400).json({ message: 'Username and password required' });
+  }
+
+  const user = await User.findOne({ username });
+  if(!user){
+    return res.status(401).json({ message: 'Invalid credentials' });
+  }
+
+  const valid = await bcrypt.compare(password, user.passwordHash);
+  if(!valid){
+    return res.status(401).json({ message: 'Invalid credentials' });
+  }
+
+  const token = jwt.sign({ id: user._id, username: user.username, role: user.role }, JWT_SECRET, { expiresIn: '12h' });
+  res.json({ token });
+});
+
+// --- روت لإنشاء منشور جديد ---
+app.post('/api/posts', async (req, res) => {
+  try {
+    const { name, content, imageUrl } = req.body;
+    if(!name || !content){
+      return res.status(400).json({ message: 'الاسم والنص مطلوبان' });
+    }
+    const newPost = new Post({ name, content, imageUrl });
+    await newPost.save();
+    res.status(201).json(newPost);
+  } catch(err) {
+    res.status(500).json({ message: 'حدث خطأ في السيرفر' });
+  }
+});
+
+// --- روت لجلب كل المنشورات ---
+app.get('/api/posts', async (req, res) => {
+  try {
+    const posts = await Post.find().sort({ createdAt: -1 });
+    res.json(posts);
+  } catch(err) {
+    res.status(500).json({ message: 'حدث خطأ في السيرفر' });
+  }
+});
+
+// --- روت حذف منشور (محمي للمدير فقط) ---
+app.delete('/api/posts/:id', authMiddleware, async (req, res) => {
+  try {
+    const postId = req.params.id;
+    const post = await Post.findById(postId);
+    if(!post){
+      return res.status(404).json({ message: 'المنشور غير موجود' });
+    }
+    await Post.deleteOne({ _id: postId });
+    res.json({ message: 'تم حذف المنشور بنجاح' });
+  } catch(err) {
+    res.status(500).json({ message: 'حدث خطأ في السيرفر' });
+  }
+});
+
+// --- اتصال بقاعدة البيانات وتشغيل السيرفر ---
+mongoose.connect(MONGO_URI, { useNewUrlParser: true, useUnifiedTopology: true })
+  .then(() => {
+    console.log('MongoDB connected');
+    // إذا ما في مدير موجود، نضيف مدير افتراضي
+    User.findOne({ role: 'admin' }).then(admin => {
+      if(!admin){
+        // أنشئ مدير افتراضي باسم admin وكلمة admin123
+        bcrypt.hash('admin123', 10).then(hash => {
+          const adminUser = new User({ username: 'admin', passwordHash: hash, role: 'admin' });
+          adminUser.save().then(() => console.log('Admin user created: admin / admin123'));
+        });
+      }
+    });
+
+    app.listen(PORT, () => {
+      console.log(`Server running on port ${PORT}`);
+    });
+  })
+  .catch(err => console.error('MongoDB connection error:', err));
